@@ -1,0 +1,259 @@
+---
+title: "Homework 2"
+author: "Goutham Selvakumar"
+date: '2022-04-18'
+output:
+  html_document:
+    df_print: paged
+---
+# Installing Packages
+```{r}
+library(tidyr)
+library(tidyverse)
+library(caret)
+library(dplyr)
+library(GGally)
+library(ggplot2)
+library(e1071)
+```
+### PROBLEM 1
+a. Visualize the distributions of the variables in this data. You can choose bar graphs, histograms and density plots. Make appropriate choices given each type of variables and be careful when selecting parameters like the number of bins for the histograms. Note there are some numerical variables and some categorical ones. The ones labeled as a ‘bool’ are Boolean variables, meaning they are only true or false and are thus a special type of categorical. Checking all the distributions with visualization and summary statistics is a typical step when beginning to work with new data.
+```{r}
+library(readxl)
+setwd("C:/Users/admin/Desktop")
+cpBankData<-read.csv("BankData.csv")
+summary(cpBankData)
+head(cpBankData)
+```
+# Visualizing credit scores by creating a histogram with 8 bins
+```{r}
+hist(cpBankData$credit.score, nclass = 8)
+cpBankData %>% select(cont2, cont3, cont4, cont6, credit.score, ages) %>% ggpairs()
+hist(cpBankData$ages, nclass = 12)
+```
+
+b. Now apply normalization to some of these numerical distributions. Specifically, choose to apply z-score to one, min-max to another, and decimal scaling to a third. Explain your choices of which normalization applies to which variable in terms of what the variable means, what distribution it starts with, and how the normalization will affect it.
+# Used Z-Score normalization for the credit.score data
+# Z-Score equation
+```{r}
+zscore <- function(x)
+{
+  a=((x=mean(x))/sd(x))
+}
+cpBankData["credit.score"] <- (lapply(cpBankData["credit.score"], zscore))
+```
+# Used Min-Max normalization for the ages data
+# Min-Max equation
+```{r}
+min_max <- function(x,new_max=6,new_min=0)
+{
+  a= (((x-min(x))* (new_max-new_min))/(max(x)))+new_min
+  return(a)
+}
+cpBankData["ages"] <- (lapply(cpBankData["ages"],min_max))
+```
+# Decimal Scaling Equation is
+```{r}
+decimal_scale <- function(x)
+{
+  a=x/100
+  return(a)
+}
+cpBankData["cont6"] <- (lapply(cpBankData["cont6"],decimal_scale))
+```
+
+c. Visualize the new distributions for the variables that have been normalized. What has changed from 
+the previous visualization? 
+# Visualizing the normalized ages
+# Normalized Data, all cpBankData have been normalized
+```{r}
+hist(cpBankData$ages, nclass = 10)
+hist(cpBankData$credit.score, nclass = 8)
+hist(cpBankData$cont6, nclass = 8)
+```
+# Not Normalized Data
+```{r}
+setwd("C:/Users/admin/Desktop")
+BankData<-read.csv("BankData.csv")
+hist(BankData$ages, nclass = 10)
+hist(BankData$credit.score, nclass = 8)
+hist(BankData$cont6, nclass = 8)
+```
+d. Choose one of the numerical variables to work with for this problem. Let’s call it v. Create a new variable called v_bins that is a binned version of that variable. This v_bins will have a new set of values like low, medium, high. Choose the actual new values (you don’t need to use low, medium, high) and the ranges of v that they represent based on your understanding of v from your visualizations. You can use equal depth, equal width or custom ranges. Explain your choices: why did you choose to create that number of values and those particular ranges?
+
+# Importing the data again with the original values
+```{r}
+setwd("C:/Users/admin/Desktop")
+BankData<-read.csv("BankData.csv")
+BankData$v_bins <- BankData$credit.score
+# Create names for the bins from poor to exceptional
+names <- c("verypoor", "fair", "good", "verygood", "exceptional")
+# Created a vector of break points using the threshold credit scores
+b <- c(-Inf, 500, 670, 740, 800, Inf)
+# Bin the data into 5 bins
+BankData$v_bins <- cut(BankData$v_bins, breaks = b, labels = names)
+head(BankData)
+```
+e. Building on (d), use v_bins to create a smoothed version of v. Choose a smoothing strategy to create a numerical version of the binned variable and explain your choices. 
+
+# Using the mean then mutating each category separately then binding them
+```{r}
+verypoor <- BankData %>% filter(v_bins == 'verypoor') %>% mutate(credit.score = mean(credit.score, na.rm = T))
+fair <- BankData %>% filter(v_bins == 'fair') %>% mutate(credit.score, na.rm = T)
+good <- BankData %>% filter(v_bins == 'good') %>% mutate(credit.score, na.rm = T)
+verygood <- BankData %>% filter(v_bins == 'verygood') %>% mutate(credit.score, na.rm = T)
+exceptional <- BankData %>% filter(v_bins == 'exceptional') %>% mutate(credit.score = mean(credit.score, na.rm = T))
+# Now that we're done smoothing the data and mutating it, we can bind them
+bind_rows(list(verypoor, fair, good, verygood, exceptional))
+head(BankData)
+```
+
+### PROBLEM 2
+a. Apply SVM to the data from Problem 1 to predict approval and report the accuracy using 10-fold cross validation.
+```{r}
+library(readxl)
+setwd("C:/Users/admin/Desktop")
+Bank_Data<-read.csv("BankData.csv")
+# installing kernlab
+library(kernlab)
+# Let's fit the model first
+svm1 <- train(approval ~., data = Bank_Data, method = "svmLinear")
+svm1
+# Evaluation method parameter, using all the datapoints to train the model
+train_control = trainControl(method = "cv", number = 10)
+# Scaling Method
+preproc = c("center", "scale")
+svm2 <- train(approval ~., data = Bank_Data, method = "svmLinear", trControl = train_control, preProcess = preproc)
+svm2
+# Now, reporting the accuracy using 10-fold cross validation
+train_control_cv = trainControl(method = "cv", number = 10)
+train_control_l00cv = trainControl(method = "L00CV", number = 10)
+svm3 <- train(approval ~., data = Bank_Data, method = "svmLinear", trControl = train_control_cv)
+svm3
+```
+b. Next, use the grid search functionality when training to optimize the C parameter of the SVM. What parameter was chosen and what is the accuracy? 
+```{r}
+grid <- expand.grid(C = 10^seq(-5,2,0.5))
+svm_grid <- train(approval ~., data = Bank_Data, method = "svmLinear", trControl = train_control, tuneGrid = grid)
+svm_grid
+```
+### PROBLEM 3
+```{r}
+# Make a copy of starwars
+copystarwars <- starwars
+# Remove unneeded columns
+copystarwars <- copystarwars %>% select(-c("name", "films", "vehicles", "starships"))
+# Completely remove NA rows
+copystarwars <- na.omit(copystarwars)
+```
+a.	Several variables are categorical. We will use dummy variables to make it possible for SVM to use these. Leave the gender category out of the dummy variable conversion to use as a categorical for prediction. Show the resulting head.
+```{r}
+# Find all categoricals
+summary(copystarwars)
+# Create Dummy varaibles for each categorical variables
+dummy <- dummyVars(gender ~., data = copystarwars)
+dummies <- as.data.frame(predict(dummy, newdata = copystarwars))
+head(dummies)
+```
+b. Use SVM to predict gender and report the accuracy. 
+```{r}
+# Copy the gender column to the dummies dataset
+dummies$gender <- copystarwars$gender
+# Run the Model
+svm1 <- train(gender ~., data = dummies, method = "svmLinear")
+svm1
+```
+c. Given that we have so many variables, it makes sense to consider using PCA. Run PCA on the data and determine an appropriate number of components to use. Document how you made the decision, including any graphs you used. Create a reduced version of the data with that number of principle components. Note: make sure to remove gender from the data before running PCA because it would be cheating if PCA had access to the label you will use. Add it back in after reducing the data and show the result. 
+```{r}
+# Remove the gender
+dummies$gender <- NULL
+# Find and remove the near 0 variance predictors
+nzv <- nearZeroVar(dummies)
+# get PCA object
+copystarwars.pca <- prcomp(dummies)
+summary(copystarwars.pca)
+# Visualization of this data
+screeplot(copystarwars.pca, type = "1") + title(xlab = "PCs")
+# Use 4 PCs to model our data
+target <- copystarwars %>% dplyr::select(gender)
+# Create the components
+preProc <- preProcess(dummies, method = "pca", pcaComp = 2)
+copystarwars.pc <- predict(preProc, dummies)
+# Put back the gender column in the dataset
+copystarwars.pc$gender <- copystarwars$gender
+head(copystarwars.pc)
+```
+
+d. Use SVM to predict gender again, but this time use the data resulting from PCA. Evaluate the results with a confusion matrix and at least two partitioning methods, using grid search on the C parameter each time. 
+```{r}
+# Create a new file for dummies before manipulating it
+starwars_dummies <- dummies
+# Move the gender column back into the dataset
+starwars_dummies$gender <- copystarwars$gender
+train_control = trainControl(method = "cv", number = 5)
+svm_starwars <- train(gender ~., data = starwars_dummies, method = "svmLinear", trControl = train_control)
+svm_starwars
+```
+
+e. Whether or not it has improved the accuracy, what has PCA done for the complexity of the model? 
+```{r}
+# PCA sample
+svm_starwars
+# Original Dataset
+svm1
+```
+
+### PROBLEM 4 (Bonus Problem 1)
+
+a. Explore the variables to see if they have reasonable distributions and show your work. We will be predicting the type variable – does that mean we have a class imbalance? 
+```{r}
+library(caret)
+data(Sacramento)
+df_sac <- select(Sacramento, -c(city,zip))
+# Implementing the ggplot
+ggplot(df_sac,aes(x=sqft, y=price, fill=type))+geom_col()
+ggplot(df_sac,aes(x=price))+geom_histogram(binwidth = 80500)+facet_wrap(~type)
+```
+b. Use SVM to predict type and use grid search to get the best accuracy you can. The accuracy may be good, but look at the confusion matrix as well. Report what you find. Note that the kappa value provided with your SVM results can also help you see this. It is a measure of how well the classifier performed that takes into account the frequency of the classes.
+```{r}
+# SVM
+df_sac <- select(df_sac, -c('latitude','longitude'))
+svm4 <- train(type ~., data = df_sac, method = "svmLinear")
+svm4
+```
+c. Use SVM to predict type and use grid search to get the best accuracy you can. The accuracy may be good, but look at the confusion matrix as well. Report what you find. Note that the kappa value provided with your SVM results can also help you see this. It is a measure of how well the classifier performed that takes into account the frequency of the classes.
+```{r}
+# Using the grid search
+grid_sac <- expand.grid(C=10^seq(-5,2,0,0.5))
+svm_grid_sac <- train(type ~., data = df_sac, method = "svmLinear", trControl = train_control, tuneGrid = grid)
+svm_grid_sac
+```
+d. Return to (b) and try at least one other way to try to improve the data before running SVM again, as in (c).
+```{r}
+# Improving the SVM again
+train_control = trainControl(method = "cv", number = 10)
+preproc = c("center", "scale")
+svm_fold <- train(type ~., data = df_sac, method = "svmLinear", trControl = train_control, preProcess = preproc)
+svm_fold
+```
+
+### PROBLEM 5 (Bonus Problem 2)
+
+```{r}
+# Make a copy to modify
+mycars <- mtcars 
+View(mycars)
+# Initialize new variable to hold fold indices
+mycars <- mtcars
+mycars$folds = 0
+# This loop sets all the rows in a given fold to have that fold's index int he folds index in the folds variable.
+# Take a look at the result and use it to create the visualization
+flds = createFolds(1:nrow(mycars), k=5, list=TRUE)
+for (i in 1:5) 
+{ 
+  mycars$folds[flds[[i]]] = i
+}
+# Implementing a graph plot for 5 folds
+ggplot(mycars,aes(folds, gear)) + geom_point() + geom_smooth(method = lm)
+```
+

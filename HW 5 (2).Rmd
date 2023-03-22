@@ -1,0 +1,229 @@
+---
+title: "Homework 5"
+author: "Goutham Selvakumar"
+date: '2022-06-01'
+output: html_document
+---
+
+a. Data gathering and integration
+The first part is to get the data you will use. You may use anything that has not been used in an assignment or tutorial. It must have at least 100 data points and must include both numerical and categorial (or ordinal) variables. I recommend keeping this relatively straightforward because data cleaning can take a lot of time if you choose a large, messy dataset. Kaggle
+(https://www.kaggle.com/datasets) and the University of California at Irvine (UCI)(https://archive.ics.uci.edu/ml/index.php) maintain collections of datasets, some even telling you if they are good examples for testing specific machine learning techniques. You may also choose to join together more than one dataset, for example to merge data on health outcomes by US state with a dataset on food statistics per state. Merging data is not required and will earn you a bonus point in
+this step. 
+```{r}
+#Import insurance dataset
+library(readxl)
+install.packages("readr")
+library(readr)
+insurance <- read_csv("insurance.csv")
+head(insurance)
+```
+
+b. Data Exploration 
+Using data exploration to understand what is happening is important throughout the pipeline, and is not limited to this step. However, it is important to use some exploration early on to make sure you understand your data. You must at least consider the distributions of each variable and at least some of the relationships between pairs of variables. 
+```{r}
+#Installing Packages
+library(dplyr)
+library(GGally)
+summary(insurance)
+insurance %>% select(age, bmi, children, charges) %>% ggpairs()
+#Convert to dataframe
+df <- as.data.frame(insurance)
+#Create ggplot object
+p <- ggplot(insurance, aes(x=sex, fill=smoker))
+p + geom_bar(position = "stack")
+p <- ggplot(df, aes(x=age, fill=sex))
+p + geom_bar(position = "stack")
+insurance %>% group_by(smoker) %>% summarise("count"=n())
+ggplot(insurance, aes(x=age, y=charges, color=smoker)) +
+  geom_point()
+```
+
+c. Data Cleaning
+Depending on your data and what you plan to do with it, you may also need to apply other processes we discussed. For example, clean up strings for consistency, deal with date formatting, change variable types between categorical and numeric, bin, smooth, group, aggregate or reshape. Make the case with visualization or by showing resulting summary statistics that your data are clean enough to continue with your analysis. 
+```{r}
+summary(insurance)
+#Exclude rows using subset function with condition of including ages greater than or equal to 20
+insurance <- subset(insurance, age >=20)
+p <- ggplot(insurance, aes(x=age, fill=sex))
+p + geom_bar(position = "stack")
+```
+
+d. Data Preprocessing
+In some cases, preprocessing is absolutely necessary. It is rarely a bad idea. Make the case for what is and is not necessary given what you plan to do with the data. This could include making dummy variables, applying normalization, binning and/or smoothing, and other transformations (see course module). 
+```{r}
+library(caret)
+#Remove region's column
+df <- insurance
+predictors <- df %>% select(-c(region))
+head(predictors)
+#Create dummies
+dummy <- dummyVars(smoker ~ ., data = predictors)
+dummies <- as.data.frame(predict(dummy, newdata = predictors))
+head(dummies)
+```
+
+e. Clustering
+Remove any labels from your data and use clustering to discover any built-in structure. Use an appropriate method to determine the number of clusters. If your data have labels, compare the clusters to those labels. If not, visualize the clustering results by making a PCA projection and coloring the points by cluster assignment. Note that PCA only works for numerical variables, so if your data have just a few categoricals, you may skip them. If there are many, use dummy variables or choose a different method for making a projection. One way is to make the distance matrix first (we covered a method for distance matrices using categorical variables in the clustering tutorial) and then apply PCA to that matrix. This is actually a way to calculate an MDS projection, a very popular method.
+```{r}
+library(factoextra)
+library(NbClust)
+predictors <- dummies
+#Set Seed
+set.seed(123)
+#Center scale allows us to standardize the data
+preproc <- preProcess(predictors, method =c("center", "scale"))
+#We have to call predict to fit our data based on preprocessing
+predictors <- predict(preproc, predictors)
+#Find the knee
+fviz_nbclust(predictors, kmeans, method = "wss")
+fviz_nbclust(predictors, kmeans, method = "silhouette")
+#Fit the data
+fit <- kmeans(predictors, centers = 4, nstart = 25)
+#Display the kmeans object information
+fit
+#Display the cluster plot
+fviz_cluster(fit, data = predictors)
+#Calculate PCA
+pca = prcomp(predictors)
+#Save as dataframe
+rotated_data = as.data.frame(pca$x)
+#Add original labels as a reference
+rotated_data$Color <- insurance$smoker
+#Plot and color by labels
+ggplot(data = rotated_data, aes(x = PC1, y = PC2, col = Color)) + geom_point(alpha = 0.3)
+#Assign the clusters as a new column
+rotated_data$Clusters = as.factor(fit$cluster)
+#Plot and color by labels
+ggplot(data = rotated_data, aes(x = PC1, y = PC2, col = Clusters)) + geom_point()
+```
+
+f. Classification
+Use at least two classifiers to predict a label in your data. If a label was not provided with the data, use the clustering from the previous part. Follow the process for choosing the best parameters for your choice of classifier. Compare the accuracy of the two. 
+```{r}
+set.seed(123)
+#Calculate PCA
+pca = prcomp(dummies)
+#Save as dataframe
+rotated_data = as.data.frame(pca$x)
+#Add original label 'smoker' as a reference
+rotated_data$Color <- insurance$smoker
+#Plot and color the labels based on 'yes' (or) 'no' for smoking
+ggplot(data = rotated_data, aes(x = PC1, y = PC2, col = Color)) + geom_point(alpha = 0.3)
+
+#KNN
+set.seed(123)
+ctrl <- trainControl(method="cv", number = 10)
+knnFit <- train(smoker ~ ., data = insurance,
+                method = "knn",
+                trControl = ctrl,
+                preProcess = c("center", "scale"),
+                tuneLength = 15)
+knnFit
+fit <- kmeans(dummies, centers = 5, nstart = 25)
+#Display the kmeans object information
+fit
+
+#SVM
+#I decided to usde the grid search here to try different values of C
+grid <- expand.grid(C = 10^seq(-5,2,0.5))
+train_control = trainControl(method = "cv", number = 10)
+#Fit the model
+svm_grid <- train(smoker ~ ., data = insurance, method = "svmLinear",
+                  trControl = train_control, tuneGrid = grid)
+#View grid search result
+svm_grid
+
+#Decision Trees
+#Evaluation Method
+train_control = trainControl(method = "cv", number = 10)
+#Fit the Model
+tree1 <- train(smoker ~ ., data = insurance, method = "rpart", trControl = train_control)
+#Evaluate the fit
+tree1
+
+#Assign clusters as a new column
+rotated_data$Clusters = as.factor(fit$cluster)
+#Plot and color by labels
+ggplot(data = rotated_data, aes(x = PC1, y = PC2, col = Clusters)) + geom_point()
+#Plot and color the labels based on wine type red or white
+ggplot(data = rotated_data, aes(x = PC1, y = PC2, col = Color)) + geom_point(alpha = 0.3)
+```
+
+g. Evaluation 
+Using the better classifier from the previous step, perform a more sophisticated evaluation using the tools of Week 9. Specifically, (1) produce a 2x2 confusion matrix (if your dataset has more than two classes, bin the classes into two groups and rebuild the model), (2) calculate the precision and recall manually, and finally (3) produce an ROC plot (see Tutorial 9). Explain how these performance measures makes your classifier look compared to accuracy.
+```{r}
+#Create a new file for the modified dataset
+myinsurance <- insurance
+#Remove regions
+myinsurance <- myinsurance %>% select(-c(region))
+#Bin age groups into 5 different bins
+myinsurance <- myinsurance %>% mutate(agegroup = cut(age,breaks=c(-Inf, 29, 39, 49, 59, Inf), labels=c("twenties", "thirties", "fourties", "fifties", "sixtieplus")))
+#Now remove age
+myinsurance <- myinsurance %>% select(-c(age))
+head(myinsurance)
+#Set seed
+set.seed(123)
+#Partition the data
+index = createDataPartition(y=myinsurance$agegroup, p=0.7, list = FALSE)
+#Everything in the generated index list
+train_set = myinsurance[index,]
+#Everything except the generated indices
+test_set = myinsurance[-index,]
+#Fit the model using the training set
+svm_split <- train(agegroup ~ ., data = train_set, method = "svmLinear")
+#Predict with test set
+pred_split <- predict(svm_split, test_set)
+train_control_boot = trainControl(method = "boot", number = 100)
+#Fit the model
+svm <- train(agegroup ~ ., data = myinsurance, method = "svmLinear",
+             trControl = train_control_boot)
+#Evaluate Fit
+svm
+#Generate confusion matrix for the test set
+cm <- confusionMatrix(test_set$agegroup, pred_split)
+cm
+#Store the byClass object of confusion matrix as a dataframe
+metrics <- as.data.frame(cm$byClass)
+#View the object
+metrics
+#Precision
+#Get the precision value for each class
+metrics %>% select(c(Precision))
+#Recall
+#Get the recall value for each class
+metrics %>% select(c(Recall))
+#Specifity
+#Get the specificity value for each class
+metrics %>% select(c(Specificity))
+#F1 Score
+#Get the F1 score value for each class
+metrics %>% select(c(F1))
+#Balanced Accuracy
+#Get the balanced accuracy value for each class
+metrics %>% select(c('Balanced Accuracy'))
+insurance$smoker <- as.factor(insurance$smoker)
+#Partition the data
+index = createDataPartition(y=insurance$smoker, p=0.7, list=FALSE)
+#Everything in the generated index list
+train_ins = insurance[index,]
+#Everything except the generated indices
+test_ins = insurance[-index,]
+#Set control parameter
+train_control = trainControl(method = "cv", number = 10)
+#Fit the Model
+knn <- train(smoker ~., data = train_ins, method = "knn", trControl = train_control, tuneLength = 20)
+#Evaluate Fit
+knn
+#Evaluate the fit with a confusion matrix
+pred_ins <- predict(knn, test_ins)
+#Confusion Matrix
+confusionMatrix(test_ins$smoker, pred_ins)
+library(pROC)
+#Get class probabilities for KNN
+pred_prob <- predict(knn, test_ins, type = "prob")
+head(pred_prob)
+#And now we can create an ROC curve for our model.
+roc_obj <- roc((test_ins$smoker), pred_prob[,1])
+plot(roc_obj, print.auc=TRUE)
+```
+

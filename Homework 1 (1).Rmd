@@ -1,0 +1,175 @@
+---
+NAME: GOUTHAM SELVAKUMAR
+DATE: 04-17-2022
+Ttile: Homework 1
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+### PROBLEM 1
+a.First, we look at the summary statistics for all the variables.  Based on those metrics, including the quartiles, compare two variables.  What can you tell about their shape from these summaries? 
+```{r}
+library(tidyverse)
+library(psych)
+library(matrixStats)
+library(GGally)
+setwd("C:/Users/admin/Desktop")
+adult<-read.csv("adult.csv")
+```
+Describing the summary statistics 
+```{r}
+summary(adult)
+```
+Based on this summary, I decided to compare sex to occupation. Based on this summary alone, since the two chosen variables are categoricals, we cannot tell what the relationship is between them.
+
+b.Use a visualization to get a fine-grain comparison (you don’t have to use QQ plots, though) of the distributions of those two variables. Why did you choose the type of visualization that you chose? How do your part (a) assumptions compare to what you can see visually?
+```{r}
+# Using ggplot for visualizing
+df <- as.data.frame(adult)
+p <- ggplot(adult, aes(x=occupation, fill=sex))
+p + geom_bar(position="stack")
+```
+I chose a Bar Chart to display the number of females and males in each occupation and color-coded it.	While the initial summary did not provide an accurate description of the data due to the non-numeric nature of the input, the Bar Chart allowed us to visualize it better.Per the bar chart above, you can see a clear distribution of how many females and males are represented in each occupation. For example, while not many in this dataset are Priv-house-serv, the females in this dataset dominate this occupation. On the other hand, many males and females are working in the craft-repair field, however, males clearly dominate this field. 
+
+c.Now create a scatterplot matrix of the numerical variables. What does this view show you that would be difficult to see looking at distributions?
+Creating a scatter plot matrix of the numerical variables
+```{r}
+ggpairs(adult[c(1,3,5,11,12,13)])
+```
+There are a few things to point out on this Scatter Plot Matrix: 1. The number of adults in this dataset decreases with age, as in the data may be biased towards ages of 17-70, with data points decreasing dramatically after age 75. This could be due to several factors including mortality and employment rates at higher age groups.
+The Pearson-Correlation coefficient is near 0 for most correlations, however, there is a positive correlation between education-num and age. Therefore, this suggests that there is a positive correlation between the years of education and the age of the person.
+
+d.These data are a selection of US adults. It might not be a very balanced sample, though. Take a look at some categorical variables and see if any have a lot more of one category than others. There are many ways to do this, including histograms and following tidyererse group by with count. I recommend you try a few for practice.
+```{r}
+adult %>% group_by(race) %>% summarise("count"=n())
+adult %>% group_by(education) %>% summarise("count"=n())
+```
+I chose to view data using group-by to view information on race and education. The white race dominates this dataset, and most within this dataset have a bachelor’s degree.
+
+e.Now we’ll consider a relationship between two categorical variables. Create a cross tabulation and then a corresponding visualization and explain a relationship between some of the values of the categoricals.
+Change data frame from categorical to numerical use dummy variables
+```{r}
+library(caret)
+dummy <- dummyVars(sex ~ ., data = adult)
+dummies <- as.data.frame(predict(dummy, newdata = adult))
+head(dummies)
+# Make a table to look at work class vs sex summary
+table(adult$workclass, adult$sex)
+# Use new data frame to look at more specific data points
+table(dummies$'occupationTransport-moving', dummies$educationBachelors)
+```
+Based on the cross-tabulation above: 25,671 in this survey said they did not work in transport/moving and do not have a bachelors 5293 do not work in transport/moving but have a bachelors 1535 work in transport/moving but do not have a bachelors 62 work in transport/moving and have a bachelors.
+
+### PROBLEM 2
+
+a. Join the two tables together so that you have one table with each state’s population for years 2010- 2019. If you are unsure about what variable to use as the key for the join, consider what variable the two original tables have in common. (Show a head of the resulting table.)
+```{r}
+library(dplyr)
+library(tidyr)
+setwd("C:/Users/admin/Desktop")
+population_odd<-read.csv("population_odd.csv")
+population_even<-read.csv("population_even.csv")
+population_new<-merge(x= population_odd, y= population_even, by="NAME", all.x = TRUE)
+head(population_new)
+```
+
+b. Clean this data up a bit (show a head of the data after): a. Remove the duplicate state ID column if your process created one.
+```{r}
+# Delete the duplicate Name.y row
+population_new$NAME.y <- NULL
+# Rename all column names to correct year numbers
+colnames(population_new) <- c("State", "Name", "2011", "2013", "2015", "2017","2019", "2010", "2012", "2014", "2016", "2018")
+# Reorder Columns
+library(tibble)
+population_new<-population_new[, c(1, 2, 3, 9, 4, 10, 5, 11, 6, 12, 7)]
+head(population_new)
+```
+
+c.	Deal with missing values in the data by replacing them with the average of the surrounding years. For example, if you had a missing value for Georgia in 2016, you would replace it with the average of Georgia’s 2015 and 2017 numbers. This may require some manual effort.
+```{r}
+# Find missing values; first use the summary function to find all N/A's
+summary(population_new)
+library(tibble)
+# For 2015
+x<-population_new$`2014`[13] + population_new$`2016`[13]
+population_new$`2015` <- population_new$`2015` %>% replace_na(mean(x/2, na.rm = TRUE))
+# For 2013
+x<-population_new$`2012`[36] + population_new$`2014`[36]
+population_new$`2013` <- population_new$`2013` %>% replace_na(mean(x, na.rm = TRUE))
+# For 2011
+x<-population_new$`2012`[3]- (population_new$`2013`[3]-population_new$`2012`[3])
+population_new$`2011` <- population_new$`2011` %>% replace_na(mean(x, na.rm = TRUE))
+# For 2017
+x<-population_new$`2016`[27] + population_new$`2018`[27]
+population_new$`2017` <- population_new$`2017` %>% replace_na(mean(x, na.rm = TRUE))
+# For 2019
+x<-population_new$`2018`[50] + (population_new$`2018`[50]-population_new$`2017`[50])
+population_new$`2019` <- population_new$`2019` %>% replace_na(mean(x, na.rm = TRUE))
+head(population_new)
+```
+
+d. We can use some tidy verse aggregation to learn about the population. 
+   a. Get the maximum population for a single year for each state. Note that because you are using an aggregation function (max) across a row, you will need the row wise () command in your tidy verse pipe. If you do not, the max value will not be individual to the row. Of course there are alternative ways.
+```{r}
+   # Create a copy of the data, then remove first 2 columns, state and name
+adultscopy <- population_new
+adultscopy$State <- NULL
+adultscopy$Name <- NULL
+# Find maximum per row
+maxVal <- pmax(adultscopy$`2011`, adultscopy$`2012`, adultscopy$`2013`, adultscopy$`2014`, adultscopy$`2015`, adultscopy$`2016`,
+               adultscopy$`2017`, adultscopy$`2018`, adultscopy$`2019`)
+head(maxVal)
+```
+  b. Now get the total population across all years for each state. This should be possible with a very minor change to the code from (d). Why is that?
+```{r}
+# sum of each row
+rowSums(adultscopy[,-1])
+```
+e. Finally, get the total US population for one single year. Keep in mind that this can be done with a single line of code even without the tidy verse, so keep it simple.
+```{r}
+sum(adultscopy$`2011`)
+```
+### PROBLEM 3
+Continuing with the data from Problem 2, let’s create a graph of population over time for a few states (choose at least three yourself). This will require another data transformation, a reshaping. In order to create a line graph, we will need a variable that represents the year, so that it can be mapped to the x axis. Use a transformation to turn all those year columns into one column that holds the year, reducing the 10 year columns down to 2 columns (year and population). Once the data are in the right shape, it will be no harder than any line graph: put the population on the y axis and color by the state. One important point: make sure you have named the columns to have only the year number (i.e., without popestimate). That can be done manually or by reading up on string (text) parsing (see the stringr library for a super useful tool). Even after doing that, you have a string version of the year. R is seeing the ‘word’ spelled two-zero-one-five instead of the number two thousand fifteen. It needs to be a number to work on a time axis. There are many ways to fix this. You can look into type_convert or do more string parsing (e.g., stringr). The simplest way is to apply the transformation right as you do the graphing. You can replace the year variable in the ggplot command with as.integer (year).
+```{r}
+library(psych)
+library(ggplot2)
+library(astsa)
+# Transform Data
+transf <- t(adultscopy)
+head(transf)
+```
+```{r}
+#use only first 3 columns
+transf <- transf[,1:3]
+df <- as.data.frame(transf)
+# add a column for years 2011 to 2019
+df$year <- seq(2011,2019, by=1)
+# Let's get plotting
+plt = ggplot() + 
+  geom_line(data = df, aes(x = year, y = V1, group=1), color = "blue")+
+  geom_line(data = df, aes(x = year, y = V2, group=1), color = "red")+
+  geom_line(data = df, aes(x = year, y = V3, group=1), color = "green")+
+  xlab('year')+ ylab('population')
+# A graph without a legend is trash, so let's add a legend, manually
+colors <- c("Alabama" = "blue", "Alaska" ="red", "Arizona" = "green")
+plt = ggplot() +
+  geom_line(data = df, aes(x = year, y = V1, group=1, color = "Alabama"))+
+  geom_line(data = df, aes(x = year, y= V2, group=1, color = "Alaska"))+
+  geom_line(data = df, aes(x = year, y= V3, group=1, color = "Arizona"))+
+  labs(x = "Year", y ="Population", color = "Legend") + scale_color_manual(values = colors)
+# Add a title
+plt <- plt + geom_line() + ggtitle("Population Growth 2011-2019")
+print(plt)
+```
+
+
+
+
+
+
+
+
+
+
